@@ -1,6 +1,10 @@
 import discord
 from discord.ext import commands
 import music
+from dotenv import load_dotenv, find_dotenv
+import os
+
+load_dotenv(find_dotenv())
 
 cogs=[music]
 intents = discord.Intents().all()
@@ -11,4 +15,4 @@ for i in range(len(cogs)):
 
 
 
-client.run('NTIyMjcyMTIxOTE3OTMxNTIy.XBCR0Q.cYCelMtWkAYXZcjGg2xWaj_U6A4')
+client.run(os.getenv('TOKEN'))
