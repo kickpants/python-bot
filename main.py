@@ -13,6 +13,4 @@ client = commands.Bot(command_prefix='!', intents=intents)
 for i in range(len(cogs)):
   cogs[i].setup(client)
 
-
-
 client.run(os.getenv('TOKEN'))
