@@ -1,10 +1,13 @@
-from os import link
+from dotenv import load_dotenv, find_dotenv
+import os
 import discord
 from discord.ext import commands
 import youtube_dl
 from youtubesearchpython import VideosSearch
 import asyncio
+import spotify_fetch
 
+load_dotenv(find_dotenv())
 song_queue = asyncio.Queue()
 FFMPEG_OPTIONS = {'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5', 'options': '-vn'}
 YDL_OPTIONS = {'format':"bestaudio"}
@@ -31,7 +34,7 @@ class music(commands.Cog):
       source = await discord.FFmpegOpusAudio.from_probe(url2,
       **FFMPEG_OPTIONS)
       if ctx.voice_client.is_playing() or song_queue.qsize() > 0:
-        message = '<a:catJAM:830304947781632010> Added `' + title + '` to the queue at position ' + str(song_queue.qsize()) + '<a:catJAM:830304947781632010>'
+        message = '<a:catJAM:830304947781632010> Added `' + title + '` to the queue at position ' + str(song_queue.qsize()) + ' <a:catJAM:830304947781632010>'
       else:
         message = '<a:catJAM:830304947781632010> Now Playing `' + title + '`<a:catJAM:830304947781632010>'
       await ctx.send(message)
@@ -52,6 +55,31 @@ class music(commands.Cog):
         break #if it's playing it breaks
       else:
         await vc.disconnect() #if not it disconnects
+
+  @commands.command()
+  async def spotify(self, ctx, args): #change args to *args if creating playlist finder
+    print('spotify playlist reader invoked')
+    voice_channel = ctx.author.voice.channel
+
+    ## Checks to see if person who issued command is in a voice channel
+    if ctx.author.voice is None:
+      await ctx.send("You need to be in a channel to use this command")
+      return ## returns because caller does not have permission to call the bot
+    ## Checks to see if bot is already in a voice client
+    if ctx.voice_client is None:
+      await voice_channel.connect()
+
+    auth_token = spotify_fetch.get_auth_token(os.getenv('CLIENT_ID'), os.getenv('CLIENT_SECRET'), spotify_fetch.api_url, os.getenv('refresh_token'))
+    playlist_content = spotify_fetch.get_playlist_items(auth_token, args)
+
+    for url in playlist_content:
+      print(f"{url}\n")
+      source = await discord.FFmpegOpusAudio.from_probe(url,
+      **FFMPEG_OPTIONS)
+      song_queue.put_nowait(source)
+    
+    await self.manage_queue(voice_channel)
+    
 
   @commands.command()
   async def play(self, ctx, *args):
@@ -94,15 +122,6 @@ class music(commands.Cog):
     else:
       print('queue is empty, not going to manage')
       return
-
-    ##while vc.is_playing(): #Checks if song is playing
-    ##  await asyncio.sleep(15) #While it's playing it sleeps for 30 seconds
-    ##else:
-    ##  await asyncio.sleep(15)
-    ##  while vc.is_playing(): #and checks once again if the bot is not playing
-    ##    break #if it's playing it breaks
-    ##  else:
-    ##    await vc.disconnect() #if not it disconnects
       
   @commands.command()
   async def leave(self, ctx):
