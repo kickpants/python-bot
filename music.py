@@ -6,6 +6,7 @@ import youtube_dl
 from youtubesearchpython import VideosSearch
 import asyncio
 import spotify_fetch
+from random import shuffle as shuffle_queue
 
 load_dotenv(find_dotenv())
 song_queue = asyncio.Queue()
@@ -18,8 +19,6 @@ class music(commands.Cog):
 
   async def get_song(self, ctx, title):
     print(title)
-    search_message = "<:Hmm:825811585116143616> Searching for " + title
-    await ctx.send(search_message)
 
     video_search = VideosSearch(title, limit=1)
     url = video_search.result()['result'][0]['link']
@@ -60,6 +59,7 @@ class music(commands.Cog):
   async def spotify(self, ctx, args): #change args to *args if creating playlist finder
     print('spotify playlist reader invoked')
     voice_channel = ctx.author.voice.channel
+    vc = ctx.voice_client
 
     ## Checks to see if person who issued command is in a voice channel
     if ctx.author.voice is None:
@@ -72,13 +72,27 @@ class music(commands.Cog):
     auth_token = spotify_fetch.get_auth_token(os.getenv('CLIENT_ID'), os.getenv('CLIENT_SECRET'), spotify_fetch.api_url, os.getenv('refresh_token'))
     playlist_content = spotify_fetch.get_playlist_items(auth_token, args)
 
-    for url in playlist_content:
-      print(f"{url}\n")
-      source = await discord.FFmpegOpusAudio.from_probe(url,
-      **FFMPEG_OPTIONS)
+    await ctx.send("<a:catJAM:830304947781632010> Playlist found adding songs to queue now <a:catJAM:830304947781632010>")
+
+    if len(playlist_content) > 20 and len(playlist_content) <= 50:
+      message = "Downloading songs... May take a little while"
+    elif len(playlist_content) > 50:
+      message = "why this playlist so long its gonna take 20 years to download all of this"
+    elif len(playlist_content) <= 20:
+      message = "Downloading songs... Will take a minute."
+    await ctx.send(message)
+
+    for title in playlist_content:
+      print(f"{title}\n")
+      song_info = await self.get_song(ctx, title)
+      with youtube_dl.YoutubeDL(YDL_OPTIONS) as ydl:
+        info = ydl.extract_info(song_info[0], download=False)
+        url2 = info['formats'][0]['url']
+        source = await discord.FFmpegOpusAudio.from_probe(url2,
+        **FFMPEG_OPTIONS)
       song_queue.put_nowait(source)
     
-    await self.manage_queue(voice_channel)
+    await self.manage_queue(vc)
     
 
   @commands.command()
@@ -96,7 +110,9 @@ class music(commands.Cog):
 
     vc = ctx.voice_client
     title = (' ').join(args)
-    ## Search youtube using provided arguements, and then return a url and title for video
+    ## Search youtube using provided arguements, and then return a url and title for video\
+    search_message = "<:Hmm:825811585116143616> Searching for " + title
+    await ctx.send(search_message)
     vid_info = await self.get_song(ctx, title)
     ## Extract audio from video as playable format
     audio_source = await self.create_source(ctx, vid_info[0], vid_info[1])
@@ -123,6 +139,20 @@ class music(commands.Cog):
       print('queue is empty, not going to manage')
       return
       
+  @commands.command()
+  async def shuffle(self, ctx):
+    shuffle_queue(song_queue._queue)
+    print("queue shuffled")
+    ctx.send("Shuffled the queue")
+
+  @commands.command()
+  async def remove(self, ctx, arg):
+    response = song_queue.get_nowait(arg)
+    if response != None:
+      ctx.send(f"Removed song at position {arg} from the queue")
+    else:
+      ctx.send(f"Nothing to remove at position {arg}")
+
   @commands.command()
   async def leave(self, ctx):
     ctx.voice_client.stop()

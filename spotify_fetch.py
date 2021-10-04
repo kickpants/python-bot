@@ -30,7 +30,7 @@ def get_playlist_items(token, url_string):
   )
   
   for x in response.json()['items']:
-    songList.append(x['track']['external_urls']['spotify'])
+    songList.append(x['track']['name'] + " " + x['track']['album']['artists'][0]['name'])
 
   for x in songList:
     print(f"{x}\n")
