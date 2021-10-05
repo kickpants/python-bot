@@ -42,7 +42,7 @@ class music(commands.Cog):
   
   async def manage_queue(self, vc):
     while vc.is_playing(): #Checks if song is playing
-      await asyncio.sleep(15) #While it's playing it sleeps for 30 seconds
+      await asyncio.sleep(5) #While it's playing it sleeps for 5 seconds
       print('waiting...')
     else:
       if song_queue.qsize() > 0:
@@ -54,12 +54,34 @@ class music(commands.Cog):
         break #if it's playing it breaks
       else:
         await vc.disconnect() #if not it disconnects
+  
+  async def fill_queue(self, ctx, playlist_content):
+  
+    if len(playlist_content) == 1:
+      title = playlist_content[0]
+      print(f"{title}\n")
+      song_info = await self.get_song(ctx, title)
+      with youtube_dl.YoutubeDL(YDL_OPTIONS) as ydl:
+        info = ydl.extract_info(song_info[0], download=False)
+        url2 = info['formats'][0]['url']
+        source = await discord.FFmpegOpusAudio.from_probe(url2,
+        **FFMPEG_OPTIONS)
+      song_queue.put_nowait(source)
+    else:
+      mid = len(playlist_content) // 2
+      first_half = playlist_content[:mid]
+      second_half = playlist_content[mid:]
 
+      await asyncio.gather(
+        self.fill_queue(ctx, first_half),
+        self.fill_queue(ctx, second_half)
+      )
+      
+      
   @commands.command()
   async def spotify(self, ctx, args): #change args to *args if creating playlist finder
     print('spotify playlist reader invoked')
     voice_channel = ctx.author.voice.channel
-    vc = ctx.voice_client
 
     ## Checks to see if person who issued command is in a voice channel
     if ctx.author.voice is None:
@@ -68,6 +90,8 @@ class music(commands.Cog):
     ## Checks to see if bot is already in a voice client
     if ctx.voice_client is None:
       await voice_channel.connect()
+
+    vc = ctx.voice_client
 
     auth_token = spotify_fetch.get_auth_token(os.getenv('CLIENT_ID'), os.getenv('CLIENT_SECRET'), spotify_fetch.api_url, os.getenv('refresh_token'))
     playlist_content = spotify_fetch.get_playlist_items(auth_token, args)
@@ -82,15 +106,15 @@ class music(commands.Cog):
       message = "Downloading songs... Will take a minute."
     await ctx.send(message)
 
-    for title in playlist_content:
-      print(f"{title}\n")
-      song_info = await self.get_song(ctx, title)
-      with youtube_dl.YoutubeDL(YDL_OPTIONS) as ydl:
-        info = ydl.extract_info(song_info[0], download=False)
-        url2 = info['formats'][0]['url']
-        source = await discord.FFmpegOpusAudio.from_probe(url2,
-        **FFMPEG_OPTIONS)
-      song_queue.put_nowait(source)
+    if not vc.is_playing():
+        print('Nothing currently playing, playing song and making queue')
+        first_song = playlist_content.pop(0)
+        song_info = await self.get_song(ctx, first_song)
+        audio_source = await self.create_source(ctx, song_info[0], song_info[1])
+        vc.play(audio_source)
+
+    await self.fill_queue(ctx, playlist_content)
+    await ctx.send(f"The queue has been filled with { song_queue.qsize() } songs")
     
     await self.manage_queue(vc)
     
@@ -143,15 +167,15 @@ class music(commands.Cog):
   async def shuffle(self, ctx):
     shuffle_queue(song_queue._queue)
     print("queue shuffled")
-    ctx.send("Shuffled the queue")
+    await ctx.send("Shuffled the queue")
 
   @commands.command()
   async def remove(self, ctx, arg):
     response = song_queue.get_nowait(arg)
     if response != None:
-      ctx.send(f"Removed song at position {arg} from the queue")
+      await ctx.send(f"Removed song at position {arg} from the queue")
     else:
-      ctx.send(f"Nothing to remove at position {arg}")
+      await ctx.send(f"Nothing to remove at position {arg}")
 
   @commands.command()
   async def leave(self, ctx):
