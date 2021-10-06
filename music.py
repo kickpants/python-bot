@@ -30,6 +30,7 @@ class music(commands.Cog):
     with youtube_dl.YoutubeDL(YDL_OPTIONS) as ydl:
       info = ydl.extract_info(url, download=False)
       url2 = info['formats'][0]['url']
+
       source = await discord.FFmpegOpusAudio.from_probe(url2,
       **FFMPEG_OPTIONS)
       if ctx.voice_client.is_playing() or song_queue.qsize() > 0:
@@ -56,7 +57,6 @@ class music(commands.Cog):
         await vc.disconnect() #if not it disconnects
   
   async def fill_queue(self, ctx, playlist_content):
-  
     if len(playlist_content) == 1:
       title = playlist_content[0]
       print(f"{title}\n")
@@ -64,8 +64,8 @@ class music(commands.Cog):
       with youtube_dl.YoutubeDL(YDL_OPTIONS) as ydl:
         info = ydl.extract_info(song_info[0], download=False)
         url2 = info['formats'][0]['url']
-        source = await discord.FFmpegOpusAudio.from_probe(url2,
-        **FFMPEG_OPTIONS)
+        source = asyncio.create_task(discord.FFmpegOpusAudio.from_probe(url2,
+        **FFMPEG_OPTIONS))
       song_queue.put_nowait(source)
     else:
       mid = len(playlist_content) // 2
@@ -113,7 +113,9 @@ class music(commands.Cog):
         audio_source = await self.create_source(ctx, song_info[0], song_info[1])
         vc.play(audio_source)
 
-    await self.fill_queue(ctx, playlist_content)
+    await asyncio.gather(
+      self.fill_queue(ctx, playlist_content)
+    )
     await ctx.send(f"The queue has been filled with { song_queue.qsize() } songs")
     
     await self.manage_queue(vc)
@@ -169,9 +171,12 @@ class music(commands.Cog):
     print("queue shuffled")
     await ctx.send("Shuffled the queue")
 
+
+  #Needs work, issue with removing using the supplied arguement. May need to split
   @commands.command()
   async def remove(self, ctx, arg):
     response = song_queue.get_nowait(arg)
+    print(arg)
     if response != None:
       await ctx.send(f"Removed song at position {arg} from the queue")
     else:
@@ -179,11 +184,15 @@ class music(commands.Cog):
 
   @commands.command()
   async def leave(self, ctx):
+    while song_queue.qsize() > 0:
+      song_queue.get_nowait()
     ctx.voice_client.stop()
     await ctx.voice_client.disconnect()
 
   @commands.command()
   async def stop(self, ctx):
+    while song_queue.qsize() > 0:
+      song_queue.get_nowait()
     ctx.voice_client.stop()
 
   @commands.command()
